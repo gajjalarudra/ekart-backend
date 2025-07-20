@@ -3,9 +3,12 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
+
+// ✅ Moved this above the console.log to fix ReferenceError
+const authMiddleware = require('../middleware/auth');
+
 console.log('authMiddleware:', authMiddleware);
 console.log('typeof authMiddleware:', typeof authMiddleware);
-const authMiddleware = require('../middleware/auth');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'yoursecret';
 
@@ -42,7 +45,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Test Protected
+// Protected test route
 router.get('/me', authMiddleware, async (req, res) => {
   const user = await User.findByPk(req.user.id, { attributes: ['id', 'name', 'email'] });
   res.json(user);
