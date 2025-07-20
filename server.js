@@ -11,12 +11,6 @@ const authRoutes = require('./routes/auth');
 const authMiddleware = require('./middleware/auth');
 const { sequelize, Product, Order, OrderItem, User } = require('./models');
 
-const uploadRouter = require('./routes/upload');
-app.use('/api', uploadRouter);
-
-// Also serve images statically from uploads folder
-app.use('/uploads', express.static('uploads')); 
-
 app.use(cors());
 app.use(express.json());
 
