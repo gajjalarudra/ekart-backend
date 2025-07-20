@@ -4,7 +4,8 @@ module.exports = (sequelize, DataTypes) => {
     name: DataTypes.STRING,
     description: DataTypes.TEXT,
     price: DataTypes.DECIMAL(10, 2),
-    stock: DataTypes.INTEGER
+    stock: DataTypes.INTEGER,
+    image_url: DataTypes.STRING,
   }, {
     tableName: 'products',
     underscored: true,
