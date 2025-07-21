@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY package*.json ./
 RUN npm install
-RUN npm installl cors
+RUN npm install cors
 
 COPY . .
 
