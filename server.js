@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const multer = require('multer');
@@ -18,7 +19,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'yoursecret';
 
-// 🔐 JWT Auth Middleware
+// JWT Auth Middleware
 function authMiddleware(req, res, next) {
   const auth = req.headers['authorization'];
   if (!auth) return res.status(401).json({ message: 'No token provided' });
@@ -33,7 +34,7 @@ function authMiddleware(req, res, next) {
   }
 }
 
-// 🧑‍💻 Signup
+// Auth Routes
 app.post('/auth/signup', async (req, res) => {
   const { name, email, password } = req.body;
   try {
@@ -49,7 +50,6 @@ app.post('/auth/signup', async (req, res) => {
   }
 });
 
-// 🔐 Login
 app.post('/auth/login', async (req, res) => {
   const { email, password } = req.body;
   try {
@@ -66,18 +66,41 @@ app.post('/auth/login', async (req, res) => {
   }
 });
 
-// ✅ Get Current User
 app.get('/auth/me', authMiddleware, async (req, res) => {
   const user = await User.findByPk(req.user.id, { attributes: ['id', 'name', 'email'] });
   res.json(user);
 });
 
-// 🟢 Health check
+// Health Check
 app.get('/', (req, res) => {
   res.send('eKart Backend is Running');
 });
 
-// 🟢 Get all products
+// Multer Storage & File Filter
+const storage = multer.diskStorage({
+  destination: 'uploads/',
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${Date.now()}${ext}`);
+  }
+});
+
+const fileFilter = (req, file, cb) => {
+  const allowed = ['.jpg', '.jpeg', '.png', '.gif'];
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (!allowed.includes(ext)) {
+    return cb(new Error('Only image files are allowed!'), false);
+  }
+  cb(null, true);
+};
+
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+});
+
+// Product Routes
 app.get('/products', async (req, res) => {
   try {
     const products = await Product.findAll();
@@ -87,10 +110,8 @@ app.get('/products', async (req, res) => {
   }
 });
 
-// 🟢 Add new product
 app.post('/products', async (req, res) => {
   const { name, description, price, stock, image_url } = req.body;
-
   if (!name || !price || stock === undefined) {
     return res.status(400).json({ error: 'Missing product fields' });
   }
@@ -103,22 +124,76 @@ app.post('/products', async (req, res) => {
   }
 });
 
-// 🟢 Upload product image
-const storage = multer.diskStorage({
-  destination: 'uploads/',
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}${ext}`);
+app.put('/products/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, description, price, stock, image_url } = req.body;
+
+  try {
+    const product = await Product.findByPk(id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    await product.update({ name, description, price, stock, image_url });
+    res.json({ message: 'Product updated', product });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update product' });
   }
 });
-const upload = multer({ storage });
 
+// ✅ Delete product & its image
+app.delete('/products/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const product = await Product.findByPk(id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    // Delete image file from disk
+    if (product.image_url && product.image_url.includes('/uploads/')) {
+      const filename = product.image_url.split('/uploads/')[1];
+      const filePath = path.join(__dirname, 'uploads', filename);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
+
+    await product.destroy();
+    res.json({ message: 'Product deleted' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete product' });
+  }
+});
+
+// ✅ Upload image and update product's image_url
+app.post('/products/:id/upload-image', upload.single('image'), async (req, res) => {
+  const { id } = req.params;
+  if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+
+  try {
+    const product = await Product.findByPk(id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    // Delete old image from disk
+    if (product.image_url && product.image_url.includes('/uploads/')) {
+      const oldFile = product.image_url.split('/uploads/')[1];
+      const oldPath = path.join(__dirname, 'uploads', oldFile);
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    }
+
+    // Save new image URL
+    const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    await product.update({ image_url: imageUrl });
+
+    res.json({ message: 'Image uploaded', image_url: imageUrl });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to upload image' });
+  }
+});
+
+// Standalone upload endpoint
 app.post('/upload', upload.single('image'), (req, res) => {
   const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
   res.json({ url: imageUrl });
 });
 
-// 🟢 Place an order (protected)
+// Orders
 app.post('/orders', authMiddleware, async (req, res) => {
   const user_id = req.user.id;
   const { items } = req.body;
@@ -157,7 +232,6 @@ app.post('/orders', authMiddleware, async (req, res) => {
   }
 });
 
-// 🟢 Get order history (protected)
 app.get('/orders', authMiddleware, async (req, res) => {
   try {
     const orders = await Order.findAll({
@@ -171,7 +245,6 @@ app.get('/orders', authMiddleware, async (req, res) => {
   }
 });
 
-// 🟢 Cancel an order
 app.delete('/orders/:id', authMiddleware, async (req, res) => {
   const orderId = req.params.id;
   try {
@@ -187,7 +260,7 @@ app.delete('/orders/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// 🚀 Start the server
+// Start Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`✅ Server started on http://localhost:${PORT}`);
