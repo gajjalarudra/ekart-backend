@@ -66,6 +66,35 @@ app.post('/auth/login', async (req, res) => {
   }
 });
 
+// POST /auth/reset-password
+app.post('/auth/reset-password', async (req, res) => {
+  const { email, newPassword, confirmPassword } = req.body;
+
+  if (!email || !newPassword || !confirmPassword) {
+    return res.status(400).json({ message: 'All fields are required' });
+  }
+
+  if (newPassword !== confirmPassword) {
+    return res.status(400).json({ message: 'Passwords do not match' });
+  }
+
+  try {
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return res.status(404).json({ message: 'User with this email not found' });
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await user.update({ password: hashed });
+
+    res.json({ message: 'Password reset successful' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
 app.get('/auth/me', authMiddleware, async (req, res) => {
   const user = await User.findByPk(req.user.id, { attributes: ['id', 'name', 'email'] });
   res.json(user);
