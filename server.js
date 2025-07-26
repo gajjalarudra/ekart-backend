@@ -265,14 +265,53 @@ app.get('/orders', authMiddleware, async (req, res) => {
   try {
     const orders = await Order.findAll({
       where: { user_id: req.user.id },
-      include: [{ model: OrderItem, include: [Product] }],
-      order: [['created_at', 'DESC']]
+      include: [
+        {
+          model: OrderItem,
+          as: 'items', // Match alias from Order.hasMany
+          include: [
+            {
+              model: Product,
+              as: 'product' // Match alias from OrderItem.belongsTo
+            }
+          ]
+        }
+      ],
+      order: [['createdAt', 'DESC']],
     });
+
     res.json(orders);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch orders' });
+    console.error('❌ Error fetching orders:', err.message);
+    console.error('📋 Stack Trace:', err.stack);
+    res.status(500).json({ error: 'Failed to fetch orders', details: err.message });
   }
 });
+
+// PATCH /orders/:id/process - mark order as processed
+app.patch('/orders/:id/process', authMiddleware, async (req, res) => {
+  const orderId = req.params.id;
+  const userId = req.user.id;
+
+  try {
+    const order = await Order.findOne({ where: { id: orderId, user_id: userId } });
+    if (!order) return res.status(404).json({ error: 'Order not found or not yours' });
+
+    if (order.status === 'processed') {
+      return res.status(400).json({ error: 'Order already processed' });
+    }
+
+    await order.update({ status: 'processed' });
+
+    res.json({ message: 'Order processed successfully' });
+  } catch (error) {
+    console.error('Error processing order:', error);
+    res.status(500).json({ error: 'Failed to process order' });
+  }
+});
+
+
+
 
 app.delete('/orders/:id', authMiddleware, async (req, res) => {
   const orderId = req.params.id;
